@@ -34,21 +34,21 @@ int decode_uri(char *uri_encoded){
 				(next2>='A' && next2<='F')
 				)
 			){
-				char real_char = next2;
+				char decoded_char = next2;
 				if(next2>='0' && next2<='9'){
-					real_char-='0';
+					decoded_char-='0';
 				}else if(next2>='A' && next2<='F'){
-					real_char-='A';
-					real_char+=10;
+					decoded_char-='A';
+					decoded_char+=10;
 				}
 
 				if(next1>='0' && next1<='9'){
-					real_char+=(next1-'0')*16;
+					decoded_char+=(next1-'0')*16;
 				}else if(next1>='A' && next1<='F'){
-					real_char += (next1-'A'+10)*16;
+					decoded_char += (next1-'A'+10)*16;
 				}
 
-				memset(uri_encoded, real_char, 1);
+				memset(uri_encoded, decoded_char, 1);
 				size_t rest_len = strlen(uri_encoded+3);
 				memcpy(uri_encoded+1, uri_encoded+3, rest_len);
 				memset(uri_encoded+rest_len+1, '\0', 2);
