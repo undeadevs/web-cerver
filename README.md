@@ -12,14 +12,14 @@ Made for learning and not for production use.
 # serve static files in current working directory
 ./main.out
 
-# serve static files in `serve-dir` (path relative to current working directory)
-./main.out serve-dir
+# serve static files in `public` (path relative to current working directory)
+./main.out public
 
-# serve static files in `./serve-dir` (path relative to current working directory)
-./main.out ./serve-dir
+# serve static files in `./public` (path relative to current working directory)
+./main.out ./public
 
-# serve static files in `/serve-dir` (absolute path)
-./main.out /serve-dir
+# serve static files in `/public` (absolute path)
+./main.out /public
 ```
 
 ## Supported Platforms
