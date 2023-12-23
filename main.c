@@ -16,6 +16,51 @@
 
 #define BUF_SIZE 104857600
 
+int decode_uri(char *url_encoded){
+	int old_len = strlen(url_encoded);
+	int new_len = 0;
+	while(*url_encoded!='\0'){
+		char curr_char = *url_encoded;
+		if(curr_char=='%'){
+			char next1 = *(url_encoded+1);
+			char next2 = *(url_encoded+2);
+			if(
+				(
+				(next1>='0' && next1<='9') ||
+				(next1>='A' && next1<='F')
+				) &&
+				(
+				(next2>='0' && next2<='9') ||
+				(next2>='A' && next2<='F')
+				)
+			){
+				char real_char = next2;
+				if(next2>='0' && next2<='9'){
+					real_char-='0';
+				}else if(next2>='A' && next2<='F'){
+					real_char-='A';
+					real_char+=10;
+				}
+
+				if(next1>='0' && next1<='9'){
+					real_char+=(next1-'0')*16;
+				}else if(next1>='A' && next1<='F'){
+					real_char += (next1-'A'+10)*16;
+				}
+
+				memset(url_encoded, real_char, 1);
+				size_t rest_len = strlen(url_encoded+3);
+				memcpy(url_encoded+1, url_encoded+3, rest_len);
+				memset(url_encoded+rest_len+1, '\0', 2);
+			}
+		}
+		url_encoded++;
+		new_len += 1;
+	}
+
+	return new_len - old_len;
+}
+
 int main(int argc, char **argv){
 	unsigned int port = DEFAULT_PORT;
 	char *serve_dir = malloc(32768);
@@ -138,6 +183,7 @@ int main(int argc, char **argv){
 		char *req_uri = malloc((req_uri_sz+1)*sizeof(char));
 		memcpy(req_uri, req_line+req_method_sz+1, req_uri_sz);
 		memset(req_uri+req_uri_sz, '\0', 1);
+		decode_uri(req_uri);
 
 		printf("Getting request HTTP version from request line...\n");
 		size_t req_httpver_sz = strcspn(req_line+req_method_sz+req_uri_sz+2, " ");
