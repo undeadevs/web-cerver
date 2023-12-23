@@ -12,13 +12,23 @@
 
 #define MAX_CONN_QUEUE 128
 
+#define DEFAULT_PORT 3000
+
 #define BUF_SIZE 104857600
 
 int main(int argc, char **argv){
+	unsigned int port = DEFAULT_PORT;
 	char *serve_dir = malloc(32768);
 
 	if(argc>1){
-		strcpy(serve_dir, argv[1]);
+		unsigned arg_serve_dir_i = 2;
+		port = atoi(argv[1]);
+		if(port==0 && *argv[1]!='0'){
+			arg_serve_dir_i = 1;
+			port = DEFAULT_PORT;
+		}
+
+		strcpy(serve_dir, argv[arg_serve_dir_i]);
 		if(strlen(serve_dir)>1 && strncmp(serve_dir+strlen(serve_dir)-1, "/", 1)==0){
 			memset(serve_dir+strlen(serve_dir)-1, '\0', 1);
 		}
@@ -48,7 +58,7 @@ int main(int argc, char **argv){
 
 	socklen_t server_addrlen = sizeof(server_addr);
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(3000);
+	server_addr.sin_port = htons(port);
 	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if(bind(server_fd, (struct sockaddr*) &server_addr, server_addrlen) == -1){
@@ -61,7 +71,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	printf("Listening to port 3000\n");
+	printf("Listening to port %d\n", port);
 
 	pid_t pid = 0;
 	while (1) {
