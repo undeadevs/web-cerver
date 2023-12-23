@@ -16,14 +16,14 @@
 
 #define BUF_SIZE 104857600
 
-int decode_uri(char *url_encoded){
-	int old_len = strlen(url_encoded);
+int decode_uri(char *uri_encoded){
+	int old_len = strlen(uri_encoded);
 	int new_len = 0;
-	while(*url_encoded!='\0'){
-		char curr_char = *url_encoded;
+	while(*uri_encoded!='\0'){
+		char curr_char = *uri_encoded;
 		if(curr_char=='%'){
-			char next1 = *(url_encoded+1);
-			char next2 = *(url_encoded+2);
+			char next1 = *(uri_encoded+1);
+			char next2 = *(uri_encoded+2);
 			if(
 				(
 				(next1>='0' && next1<='9') ||
@@ -48,13 +48,13 @@ int decode_uri(char *url_encoded){
 					real_char += (next1-'A'+10)*16;
 				}
 
-				memset(url_encoded, real_char, 1);
-				size_t rest_len = strlen(url_encoded+3);
-				memcpy(url_encoded+1, url_encoded+3, rest_len);
-				memset(url_encoded+rest_len+1, '\0', 2);
+				memset(uri_encoded, real_char, 1);
+				size_t rest_len = strlen(uri_encoded+3);
+				memcpy(uri_encoded+1, uri_encoded+3, rest_len);
+				memset(uri_encoded+rest_len+1, '\0', 2);
 			}
 		}
-		url_encoded++;
+		uri_encoded++;
 		new_len += 1;
 	}
 
