@@ -227,6 +227,7 @@ int main(int argc, char **argv){
 				char *temp_uri = malloc((strlen(req_uri+1)+1)*sizeof(char));
 				strcpy(temp_uri, req_uri+1);
 				sprintf(req_uri+1, "index.html%s", temp_uri);
+				free(temp_uri);
 			}
 
 			size_t req_path_sz = strcspn(req_uri, "?");
@@ -324,6 +325,8 @@ int main(int argc, char **argv){
 			printf("Sent.\n");
 
 			free(file_path);
+			free(req_qparams_str);
+			free(req_path);
 			free(res);
 		}
 
