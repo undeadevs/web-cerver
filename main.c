@@ -154,7 +154,7 @@ int main(int argc, char **argv){
 
 		printf("Parsing request line...\n");
 		size_t req_line_sz = strcspn(req_buf, "\n");
-		if(!req_line_sz){
+		if(!req_line_sz || req_line_sz==strlen(req_buf)){
 			close(client_fd);
 			exit(1);
 			continue;
@@ -166,7 +166,7 @@ int main(int argc, char **argv){
 
 		printf("Getting request method from request line...\n");
 		size_t req_method_sz = strcspn(req_line, " "); 
-		if(!req_method_sz){
+		if(!req_method_sz || req_method_sz==req_line_sz){
 			close(client_fd);
 			free(req_line);
 			exit(1);
@@ -178,7 +178,7 @@ int main(int argc, char **argv){
 
 		printf("Getting request URI from request line...\n");
 		size_t req_uri_sz = strcspn(req_line+req_method_sz+1, " ");
-		if(!req_uri_sz){
+		if(!req_uri_sz || req_uri_sz==strlen(req_line+req_method_sz+1)){
 			close(client_fd);
 			free(req_method);
 			free(req_line);
@@ -188,11 +188,10 @@ int main(int argc, char **argv){
 		char *req_uri = malloc((req_uri_sz+1)*sizeof(char));
 		memcpy(req_uri, req_line+req_method_sz+1, req_uri_sz);
 		memset(req_uri+req_uri_sz, '\0', 1);
-		decode_uri(req_uri);
 
 		printf("Getting request HTTP version from request line...\n");
 		size_t req_httpver_sz = strcspn(req_line+req_method_sz+req_uri_sz+2, " ");
-		if(!req_httpver_sz){
+		if(!req_httpver_sz || req_httpver_sz!=strlen(req_line+req_method_sz+req_uri_sz+2)){
 			close(client_fd);
 			free(req_uri);
 			free(req_method);
@@ -224,9 +223,34 @@ int main(int argc, char **argv){
 
 			if(strcmp(req_uri, "/")==0){
 				strcpy(req_uri, "/index.html");
+			} else if(strncmp(req_uri, "/?", 2)==0){
+				char *temp_uri = malloc((strlen(req_uri+1)+1)*sizeof(char));
+				strcpy(temp_uri, req_uri+1);
+				sprintf(req_uri+1, "index.html%s", temp_uri);
 			}
 
-			size_t file_path_len = (strlen(serve_dir)+strlen(req_uri));
+			size_t req_path_sz = strcspn(req_uri, "?");
+			char *req_path = malloc((req_path_sz+1)*sizeof(char));
+			memcpy(req_path, req_uri, req_path_sz);
+			memset(req_path+req_path_sz, '\0', 1);
+			
+			size_t req_qparams_str_sz = req_uri_sz-req_path_sz;
+			if(req_qparams_str_sz){
+				req_qparams_str_sz-=1;
+			}
+			char *req_qparams_str = malloc((req_qparams_str_sz+1)*sizeof(char));
+			if(req_qparams_str_sz){
+				memcpy(req_qparams_str, req_uri+req_path_sz+1, req_qparams_str_sz);
+			}
+			memset(req_qparams_str+req_qparams_str_sz, '\0', 1);
+
+			decode_uri(req_path);
+			decode_uri(req_qparams_str);
+
+			printf("Path: `%s`\n", req_path);
+			if(req_qparams_str_sz) printf("Query Params: `%s`\n", req_qparams_str);
+
+			size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
 			char *file_path = malloc(file_path_len*sizeof(char)+1);
 
 			sprintf(file_path, "%s%s", serve_dir, req_uri);
