@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <signal.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -117,7 +118,7 @@ int main(int argc, char **argv){
 	}
 
 	printf("Listening to port %d\n", port);
-
+	signal(SIGCHLD, SIG_IGN);
 	pid_t pid = -1;
 	while (1) {
 		if(pid > 0) printf("---------------------------------------------------\n");
