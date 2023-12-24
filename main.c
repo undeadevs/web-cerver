@@ -118,9 +118,9 @@ int main(int argc, char **argv){
 
 	printf("Listening to port %d\n", port);
 
-	pid_t pid = 0;
+	pid_t pid = -1;
 	while (1) {
-		if(pid == 0) printf("---------------------------------------------------\n");
+		if(pid > 0) printf("---------------------------------------------------\n");
 
 		memset(req_buf, 0, BUF_SIZE);
 
@@ -147,6 +147,7 @@ int main(int argc, char **argv){
 		if(nread == -1){
 			perror("Error on receiving request bytes");
 			close(client_fd);
+			exit(1);
 			continue;
 		}
 
@@ -154,6 +155,7 @@ int main(int argc, char **argv){
 		size_t req_line_sz = strcspn(req_buf, "\n");
 		if(!req_line_sz){
 			close(client_fd);
+			exit(1);
 			continue;
 		}
 		req_line_sz-=1;
@@ -166,6 +168,7 @@ int main(int argc, char **argv){
 		if(!req_method_sz){
 			close(client_fd);
 			free(req_line);
+			exit(1);
 			continue;
 		}
 		char *req_method = malloc((req_method_sz+1)*sizeof(char));
@@ -178,6 +181,7 @@ int main(int argc, char **argv){
 			close(client_fd);
 			free(req_method);
 			free(req_line);
+			exit(1);
 			continue;
 		}
 		char *req_uri = malloc((req_uri_sz+1)*sizeof(char));
@@ -192,6 +196,7 @@ int main(int argc, char **argv){
 			free(req_uri);
 			free(req_method);
 			free(req_line);
+			exit(1);
 			continue;
 		}
 		char *req_httpver = malloc((req_httpver_sz+1)*sizeof(char));
@@ -205,6 +210,7 @@ int main(int argc, char **argv){
 			free(req_uri);
 			free(req_method);
 			free(req_line);
+			exit(1);
 			continue;
 		}
 
@@ -302,6 +308,8 @@ int main(int argc, char **argv){
 		free(req_uri);
 		free(req_method);
 		free(req_line);
+
+		exit(0);
 	}
 
 	free(req_buf);
