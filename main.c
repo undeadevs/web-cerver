@@ -223,10 +223,12 @@ int main(int argc, char **argv){
 
 			if(strcmp(req_uri, "/")==0){
 				strcpy(req_uri, "/index.html");
+				req_uri_sz = strlen(req_uri);
 			} else if(strncmp(req_uri, "/?", 2)==0){
 				char *temp_uri = malloc((strlen(req_uri+1)+1)*sizeof(char));
 				strcpy(temp_uri, req_uri+1);
 				sprintf(req_uri+1, "index.html%s", temp_uri);
+				req_uri_sz = strlen(req_uri);
 				free(temp_uri);
 			}
 
@@ -234,7 +236,7 @@ int main(int argc, char **argv){
 			char *req_path = malloc((req_path_sz+1)*sizeof(char));
 			memcpy(req_path, req_uri, req_path_sz);
 			memset(req_path+req_path_sz, '\0', 1);
-			
+
 			size_t req_qparams_str_sz = req_uri_sz-req_path_sz;
 			if(req_qparams_str_sz){
 				req_qparams_str_sz-=1;
