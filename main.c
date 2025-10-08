@@ -253,80 +253,96 @@ int main(int argc, char **argv){
 			printf("Path: `%s`\n", req_path);
 			if(req_qparams_str_sz) printf("Query Params: `%s`\n", req_qparams_str);
 
-			size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
-			char *file_path = malloc(file_path_len*sizeof(char)+1);
-
-			sprintf(file_path, "%s%s", serve_dir, req_uri);
-			memset(file_path+file_path_len, 0, 1);
-
-			FILE *fptr = fopen(file_path, "r");
-
-			if(fptr!=NULL){
-				printf("Found requested file `%s`\n", file_path);
-				fseek(fptr, 0, SEEK_END);
-				size_t fsize = ftell(fptr);
-				fseek(fptr, 0, SEEK_SET);
-
-				printf("File size: %zu\n", fsize);
-
-				char *res_h = malloc(BUF_SIZE); 
+			if(strcmp(req_path, "/healthcheck") == 0){
 				sprintf(
-					res_h, 
+					res, 
 					"%s 200 OK\r\n"
 					"server: Web-Cerver\r\n"
 					"connection: Close\r\n"
-					"content-length: %zu\r\n"
+					"content-length: 2\r\n"
 					"\r\n"
+					"OK"
 					,
-					req_httpver,
-					fsize
+					req_httpver
 				);
 
-				memcpy(res, res_h, strlen(res_h));
+				res_len += strlen(res);
+			} else {
+				size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
+				char *file_path = malloc(file_path_len*sizeof(char)+1);
 
-				res_len += strlen(res_h);
+				sprintf(file_path, "%s%s", serve_dir, req_uri);
+				memset(file_path+file_path_len, 0, 1);
 
-				size_t capped_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
-				fread(res+res_len, capped_fsize, 1, fptr);
-				res_len+=capped_fsize;
+				FILE *fptr = fopen(file_path, "r");
 
-				fseek(fptr, 0, SEEK_SET);
-				fclose(fptr);
+				if(fptr!=NULL){
+					printf("Found requested file `%s`\n", file_path);
+					fseek(fptr, 0, SEEK_END);
+					size_t fsize = ftell(fptr);
+					fseek(fptr, 0, SEEK_SET);
 
-				free(res_h);
-			}else{
-				printf("Unable to find requested file `%s`\n", file_path);
-				printf("404 Response\n");
-				char *body = "Not Found";
+					printf("File size: %zu\n", fsize);
 
-				char *res_h = malloc(BUF_SIZE); 
-				sprintf(
-					res_h, 
-					"%s 404 NOT FOUND\r\n"
-					"server: Web-Cerver\r\n"
-					"connection: Close\r\n"
-					"content-length: %zu\r\n"
-					"\r\n"
-					,
-					req_httpver,
-					strlen(body)
-				);
+					char *res_h = malloc(BUF_SIZE); 
+					sprintf(
+						res_h, 
+						"%s 200 OK\r\n"
+						"server: Web-Cerver\r\n"
+						"connection: Close\r\n"
+						"content-length: %zu\r\n"
+						"\r\n"
+						,
+						req_httpver,
+						fsize
+					);
 
-				memcpy(res, res_h, strlen(res_h));
+					memcpy(res, res_h, strlen(res_h));
 
-				res_len += strlen(res_h);
+					res_len += strlen(res_h);
 
-				memcpy(res+res_len, body, strlen(body));
-				res_len+=strlen(body);
+					size_t capped_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
+					fread(res+res_len, capped_fsize, 1, fptr);
+					res_len+=capped_fsize;
 
-				free(res_h);
+					fseek(fptr, 0, SEEK_SET);
+					fclose(fptr);
+
+					free(res_h);
+				}else{
+					printf("Unable to find requested file `%s`\n", file_path);
+					printf("404 Response\n");
+					char *body = "Not Found";
+
+					char *res_h = malloc(BUF_SIZE); 
+					sprintf(
+						res_h, 
+						"%s 404 NOT FOUND\r\n"
+						"server: Web-Cerver\r\n"
+						"connection: Close\r\n"
+						"content-length: %zu\r\n"
+						"\r\n"
+						,
+						req_httpver,
+						strlen(body)
+					);
+
+					memcpy(res, res_h, strlen(res_h));
+
+					res_len += strlen(res_h);
+
+					memcpy(res+res_len, body, strlen(body));
+					res_len+=strlen(body);
+
+					free(res_h);
+				}
+				free(file_path);
 			}
 
 			printf("Sending response...\n");
 			send(client_fd, res, res_len, 0);
 			printf("Sent.\n");
 
-			free(file_path);
 			free(req_qparams_str);
 			free(req_path);
 			free(res);
