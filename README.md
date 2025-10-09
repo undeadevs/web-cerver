@@ -24,9 +24,6 @@ Serve Directory = `.` (current working directory)
 # serve static files in current working directory
 ./main.out
 
-# serve static files in current working directory to port 8080
-./main.out 8080
-
 # serve static files in `public` (relative to current working directory)
 ./main.out public
 
