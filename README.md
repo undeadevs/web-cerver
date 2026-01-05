@@ -22,19 +22,19 @@ Serve Directory = `.` (current working directory)
 ./build.sh
 
 # serve static files in current working directory
-./main.out
+./bin/web-cerver
 
 # serve static files in `public` (relative to current working directory)
-./main.out public
+./bin/web-cerver public
 
 # serve static files in `./public` (relative to current working directory)
-./main.out ./public
+./bin/web-cerver ./public
 
 # serve static files in `/public` (absolute path)
-./main.out /public
+./bin/web-cerver /public
 
 # serve static files in `./public` to port 8080 
-./main.out 8080 ./public
+./bin/web-cerver 8080 ./public
 ```
 
 ## Supported Platforms
