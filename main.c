@@ -15,6 +15,7 @@
 
 #define DEFAULT_PORT 3000
 
+#define SERVE_DIR_BUF_SIZE 32768
 #define BUF_SIZE 104857600
 
 int decode_uri(char *uri_encoded){
@@ -62,9 +63,250 @@ int decode_uri(char *uri_encoded){
 	return new_len - old_len;
 }
 
+void handle_client(int server_fd, char *serve_dir){
+	struct sockaddr_in client_addr = {0};
+	socklen_t client_addrlen = sizeof(client_addr);
+	int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, &client_addrlen);
+	if(client_fd == -1){
+		perror("Connection failed");
+		return;
+	}
+	pid_t pid = fork();
+
+	if(pid<0) {
+		perror("Fork failed");
+		close(client_fd);
+		return;
+	}else if(pid>0) {
+		printf("---------------------------------------------------\n");
+		return;
+	};
+
+	char *arena = malloc(BUF_SIZE*3);
+	memset(arena, 0, BUF_SIZE*3);
+	size_t arena_top = 0;
+
+	char *req_buf = arena+arena_top;
+	arena_top += BUF_SIZE;
+
+	char *client_addr_str = inet_ntoa(client_addr.sin_addr);
+	printf("Connected: %s\n", client_addr_str);
+
+	printf("Reading request bytes...\n");
+	ssize_t nread = recvfrom(client_fd, req_buf, BUF_SIZE, 0, (struct sockaddr*) &client_addr, &client_addrlen);
+	if(nread == -1){
+		perror("Error on receiving request bytes");
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+
+	printf("Parsing request line...\n");
+	size_t req_line_sz = strcspn(req_buf, "\n");
+	if(!req_line_sz || req_line_sz==strlen(req_buf)){
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+	req_line_sz-=1;
+
+	char *req_line = arena+arena_top;
+	arena_top += req_line_sz+1;
+	strncpy(req_line, req_buf, req_line_sz);
+	req_line[req_line_sz] = '\0';
+
+	printf("Getting request method from request line...\n");
+	size_t req_method_sz = strcspn(req_line, " "); 
+	if(!req_method_sz || req_method_sz==req_line_sz){
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+	char *req_method = arena+arena_top;
+	arena_top += req_method_sz+1;
+	strncpy(req_method, req_line, req_method_sz);
+	req_method[req_method_sz] = '\0';
+
+	printf("Getting request URI from request line...\n");
+	size_t req_uri_sz = strcspn(req_line+req_method_sz+1, " ");
+	if(!req_uri_sz || req_uri_sz==strlen(req_line+req_method_sz+1)){
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+	char *req_uri = arena+arena_top;
+	arena_top += req_uri_sz+1;
+	strncpy(req_uri, req_line+req_method_sz+1, req_uri_sz);
+	req_uri[req_uri_sz] = '\0';
+
+	printf("Getting request HTTP version from request line...\n");
+	size_t req_httpver_sz = strcspn(req_line+req_method_sz+req_uri_sz+2, " ");
+	if(!req_httpver_sz || req_httpver_sz!=strlen(req_line+req_method_sz+req_uri_sz+2)){
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+	char *req_httpver = arena+arena_top;
+	arena_top += req_httpver_sz+1;
+	strncpy(req_httpver, req_line+req_method_sz+req_uri_sz+2, req_httpver_sz);
+	req_httpver[req_httpver_sz] = '\0';
+
+	printf("Checking if HTTP...\n");
+	if(strncmp(req_httpver, "HTTP", 4)!=0){
+		free(arena);
+		close(client_fd);
+		exit(1);
+		return;
+	}
+
+	printf("Handling GET request making sure the URI starts with `/`\n");
+	if(strncmp(req_uri, "/", 1)==0 && strncmp(req_method, "GET", 3)==0){
+		printf("A %s request to `%s`\n", req_method, req_uri);
+
+		char *res = arena+arena_top; 
+		arena_top += BUF_SIZE*2;
+		size_t res_len = 0;
+
+		if(strcmp(req_uri, "/")==0){
+			char *temp_uri = "/index.html";
+			req_uri = arena+arena_top;
+			arena_top += strlen(temp_uri);
+			strcpy(req_uri, temp_uri);
+			req_uri_sz = strlen(req_uri);
+		} else if(strncmp(req_uri, "/?", 2)==0){
+			char temp_uri[strlen(req_uri+1)+1];
+			strcpy(temp_uri, req_uri+1);
+			sprintf(req_uri+1, "index.html%s", temp_uri);
+			req_uri_sz = strlen(req_uri);
+		}
+
+		size_t req_path_sz = strcspn(req_uri, "?");
+		char *req_path = arena+arena_top;
+		arena_top += req_path_sz+1;
+		strncpy(req_path, req_uri, req_path_sz);
+		req_path[req_path_sz] = '\0';
+
+		size_t req_qparams_str_sz = req_uri_sz-req_path_sz;
+		if(req_qparams_str_sz){
+			req_qparams_str_sz-=1;
+		}
+		char *req_qparams_str = arena+arena_top;
+		arena_top += req_qparams_str_sz+1;
+		if(req_qparams_str_sz){
+			strncpy(req_qparams_str, req_uri+req_path_sz+1, req_qparams_str_sz);
+		}
+		req_qparams_str[req_qparams_str_sz] = '\0';
+
+		decode_uri(req_path);
+		decode_uri(req_qparams_str);
+
+		printf("Path: `%s`\n", req_path);
+		if(req_qparams_str_sz) printf("Query Params: `%s`\n", req_qparams_str);
+
+		if(strcmp(req_path, "/healthcheck") == 0){
+			char res_h[500]; 
+
+			sprintf(
+				res_h, 
+				"%s 200 OK\r\n"
+				"server: Web-Cerver\r\n"
+				"connection: Close\r\n"
+				"content-length: 2\r\n"
+				"\r\n"
+				"OK"
+				,
+				req_httpver
+			);
+
+			strncpy(res, res_h, strlen(res_h));
+
+			res_len += strlen(res);
+		} else {
+			size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
+			char file_path[file_path_len+1];
+
+			sprintf(file_path, "%s%s", serve_dir, req_uri);
+			file_path[file_path_len] = '\0';
+
+			FILE *fptr = fopen(file_path, "r");
+
+			if(fptr!=NULL){
+				printf("Found requested file `%s`\n", file_path);
+				fseek(fptr, 0, SEEK_END);
+				size_t fsize = ftell(fptr);
+				fseek(fptr, 0, SEEK_SET);
+
+				printf("File size: %zu\n", fsize);
+
+				char res_h[500]; 
+				sprintf(
+					res_h, 
+					"%s 200 OK\r\n"
+					"server: Web-Cerver\r\n"
+					"connection: Close\r\n"
+					"content-length: %zu\r\n"
+					"\r\n"
+					,
+					req_httpver,
+					fsize
+				);
+
+				strncpy(res, res_h, strlen(res_h));
+
+				res_len += strlen(res_h);
+
+				size_t capped_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
+				fread(res+res_len, capped_fsize, 1, fptr);
+				res_len+=capped_fsize;
+
+				fseek(fptr, 0, SEEK_SET);
+				fclose(fptr);
+			}else{
+				printf("Unable to find requested file `%s`\n", file_path);
+				printf("404 Response\n");
+				char *body = "Not Found";
+
+				char res_h[500]; 
+				sprintf(
+					res_h, 
+					"%s 404 NOT FOUND\r\n"
+					"server: Web-Cerver\r\n"
+					"connection: Close\r\n"
+					"content-length: %zu\r\n"
+					"\r\n"
+					,
+					req_httpver,
+					strlen(body)
+				);
+
+				strncpy(res, res_h, strlen(res_h));
+
+				res_len += strlen(res_h);
+
+				strncpy(res+res_len, body, strlen(body));
+				res_len+=strlen(body);
+			}
+		}
+
+		printf("Sending response...\n");
+		send(client_fd, res, res_len, 0);
+		printf("Sent.\n");
+	}
+
+	free(arena);
+	close(client_fd);
+
+	exit(0);
+}
+
 int main(int argc, char **argv){
 	unsigned int port = DEFAULT_PORT;
-	char *serve_dir = malloc(32768);
+	char serve_dir[SERVE_DIR_BUF_SIZE];
 
 	if(argc>1){
 		unsigned arg_serve_dir_i = 2;
@@ -92,8 +334,6 @@ int main(int argc, char **argv){
 		perror("opendir");
 	}
 
-	char *req_buf = malloc(BUF_SIZE);
-
 	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	struct sockaddr_in server_addr = {0};
 
@@ -119,246 +359,9 @@ int main(int argc, char **argv){
 
 	printf("Listening to port %d\n", port);
 	signal(SIGCHLD, SIG_IGN);
-	pid_t pid = -1;
 	while (1) {
-		if(pid > 0) printf("---------------------------------------------------\n");
-
-		memset(req_buf, 0, BUF_SIZE);
-
-		struct sockaddr_in client_addr = {0};
-		socklen_t client_addrlen = sizeof(client_addr);
-		int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, &client_addrlen);
-		if(client_fd == -1){
-			perror("Connection failed");
-			continue;
-		}
-		pid = fork();
-
-		if(pid<0) {
-			perror("Fork failed");
-			close(client_fd);
-			continue;
-		}else if(pid>0) continue;
-
-		char *client_addr_str = inet_ntoa(client_addr.sin_addr);
-		printf("Connected: %s\n", client_addr_str);
-
-		printf("Reading request bytes...\n");
-		ssize_t nread = recvfrom(client_fd, req_buf, BUF_SIZE, 0, (struct sockaddr*) &client_addr, &client_addrlen);
-		if(nread == -1){
-			perror("Error on receiving request bytes");
-			close(client_fd);
-			exit(1);
-			continue;
-		}
-
-		printf("Parsing request line...\n");
-		size_t req_line_sz = strcspn(req_buf, "\n");
-		if(!req_line_sz || req_line_sz==strlen(req_buf)){
-			close(client_fd);
-			exit(1);
-			continue;
-		}
-		req_line_sz-=1;
-
-		char *req_line = malloc(req_line_sz*sizeof(char));
-		memcpy(req_line, req_buf, req_line_sz);
-
-		printf("Getting request method from request line...\n");
-		size_t req_method_sz = strcspn(req_line, " "); 
-		if(!req_method_sz || req_method_sz==req_line_sz){
-			close(client_fd);
-			free(req_line);
-			exit(1);
-			continue;
-		}
-		char *req_method = malloc((req_method_sz+1)*sizeof(char));
-		memcpy(req_method, req_line, req_method_sz);
-		memset(req_method+req_method_sz, '\0', 1);
-
-		printf("Getting request URI from request line...\n");
-		size_t req_uri_sz = strcspn(req_line+req_method_sz+1, " ");
-		if(!req_uri_sz || req_uri_sz==strlen(req_line+req_method_sz+1)){
-			close(client_fd);
-			free(req_method);
-			free(req_line);
-			exit(1);
-			continue;
-		}
-		char *req_uri = malloc((req_uri_sz+1)*sizeof(char));
-		memcpy(req_uri, req_line+req_method_sz+1, req_uri_sz);
-		memset(req_uri+req_uri_sz, '\0', 1);
-
-		printf("Getting request HTTP version from request line...\n");
-		size_t req_httpver_sz = strcspn(req_line+req_method_sz+req_uri_sz+2, " ");
-		if(!req_httpver_sz || req_httpver_sz!=strlen(req_line+req_method_sz+req_uri_sz+2)){
-			close(client_fd);
-			free(req_uri);
-			free(req_method);
-			free(req_line);
-			exit(1);
-			continue;
-		}
-		char *req_httpver = malloc((req_httpver_sz+1)*sizeof(char));
-		memcpy(req_httpver, req_line+req_method_sz+req_uri_sz+2, req_httpver_sz);
-		memset(req_httpver+req_httpver_sz, '\0', 1);
-
-		printf("Checking if HTTP...\n");
-		if(strncmp(req_httpver, "HTTP", 4)!=0){
-			close(client_fd);
-			free(req_httpver);
-			free(req_uri);
-			free(req_method);
-			free(req_line);
-			exit(1);
-			continue;
-		}
-
-		printf("Handling GET request making sure the URI starts with `/`\n");
-		if(strncmp(req_uri, "/", 1)==0 && strncmp(req_method, "GET", 3)==0){
-			printf("A %s request to `%s`\n", req_method, req_uri);
-
-			char *res = malloc(BUF_SIZE*2); 
-			size_t res_len = 0;
-
-			if(strcmp(req_uri, "/")==0){
-				strcpy(req_uri, "/index.html");
-				req_uri_sz = strlen(req_uri);
-			} else if(strncmp(req_uri, "/?", 2)==0){
-				char *temp_uri = malloc((strlen(req_uri+1)+1)*sizeof(char));
-				strcpy(temp_uri, req_uri+1);
-				sprintf(req_uri+1, "index.html%s", temp_uri);
-				req_uri_sz = strlen(req_uri);
-				free(temp_uri);
-			}
-
-			size_t req_path_sz = strcspn(req_uri, "?");
-			char *req_path = malloc((req_path_sz+1)*sizeof(char));
-			memcpy(req_path, req_uri, req_path_sz);
-			memset(req_path+req_path_sz, '\0', 1);
-
-			size_t req_qparams_str_sz = req_uri_sz-req_path_sz;
-			if(req_qparams_str_sz){
-				req_qparams_str_sz-=1;
-			}
-			char *req_qparams_str = malloc((req_qparams_str_sz+1)*sizeof(char));
-			if(req_qparams_str_sz){
-				memcpy(req_qparams_str, req_uri+req_path_sz+1, req_qparams_str_sz);
-			}
-			memset(req_qparams_str+req_qparams_str_sz, '\0', 1);
-
-			decode_uri(req_path);
-			decode_uri(req_qparams_str);
-
-			printf("Path: `%s`\n", req_path);
-			if(req_qparams_str_sz) printf("Query Params: `%s`\n", req_qparams_str);
-
-			if(strcmp(req_path, "/healthcheck") == 0){
-				sprintf(
-					res, 
-					"%s 200 OK\r\n"
-					"server: Web-Cerver\r\n"
-					"connection: Close\r\n"
-					"content-length: 2\r\n"
-					"\r\n"
-					"OK"
-					,
-					req_httpver
-				);
-
-				res_len += strlen(res);
-			} else {
-				size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
-				char *file_path = malloc(file_path_len*sizeof(char)+1);
-
-				sprintf(file_path, "%s%s", serve_dir, req_uri);
-				memset(file_path+file_path_len, 0, 1);
-
-				FILE *fptr = fopen(file_path, "r");
-
-				if(fptr!=NULL){
-					printf("Found requested file `%s`\n", file_path);
-					fseek(fptr, 0, SEEK_END);
-					size_t fsize = ftell(fptr);
-					fseek(fptr, 0, SEEK_SET);
-
-					printf("File size: %zu\n", fsize);
-
-					char *res_h = malloc(BUF_SIZE); 
-					sprintf(
-						res_h, 
-						"%s 200 OK\r\n"
-						"server: Web-Cerver\r\n"
-						"connection: Close\r\n"
-						"content-length: %zu\r\n"
-						"\r\n"
-						,
-						req_httpver,
-						fsize
-					);
-
-					memcpy(res, res_h, strlen(res_h));
-
-					res_len += strlen(res_h);
-
-					size_t capped_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
-					fread(res+res_len, capped_fsize, 1, fptr);
-					res_len+=capped_fsize;
-
-					fseek(fptr, 0, SEEK_SET);
-					fclose(fptr);
-
-					free(res_h);
-				}else{
-					printf("Unable to find requested file `%s`\n", file_path);
-					printf("404 Response\n");
-					char *body = "Not Found";
-
-					char *res_h = malloc(BUF_SIZE); 
-					sprintf(
-						res_h, 
-						"%s 404 NOT FOUND\r\n"
-						"server: Web-Cerver\r\n"
-						"connection: Close\r\n"
-						"content-length: %zu\r\n"
-						"\r\n"
-						,
-						req_httpver,
-						strlen(body)
-					);
-
-					memcpy(res, res_h, strlen(res_h));
-
-					res_len += strlen(res_h);
-
-					memcpy(res+res_len, body, strlen(body));
-					res_len+=strlen(body);
-
-					free(res_h);
-				}
-				free(file_path);
-			}
-
-			printf("Sending response...\n");
-			send(client_fd, res, res_len, 0);
-			printf("Sent.\n");
-
-			free(req_qparams_str);
-			free(req_path);
-			free(res);
-		}
-
-		close(client_fd);
-
-		free(req_httpver);
-		free(req_uri);
-		free(req_method);
-		free(req_line);
-
-		exit(0);
+		handle_client(server_fd, serve_dir);
 	}
-
-	free(req_buf);
 
 	close(server_fd);
 	return 0;
