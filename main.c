@@ -18,10 +18,10 @@
 #define SERVE_DIR_BUF_SIZE 32768
 #define BUF_SIZE 104857600
 
-int decode_uri(char *uri_encoded){
-	int old_len = strlen(uri_encoded);
+int decode_uri(char *uri_encoded, size_t len){
 	int new_len = 0;
-	while(*uri_encoded!='\0'){
+	int i = len;
+	while(i>0){
 		char curr_char = *uri_encoded;
 		if(curr_char=='%'){
 			char next1 = *(uri_encoded+1);
@@ -51,16 +51,17 @@ int decode_uri(char *uri_encoded){
 				}
 
 				memset(uri_encoded, decoded_char, 1);
-				size_t rest_len = strlen(uri_encoded+3);
+				i -= 2;
+				size_t rest_len = i;
 				memcpy(uri_encoded+1, uri_encoded+3, rest_len);
-				memset(uri_encoded+rest_len+1, '\0', 2);
 			}
 		}
+		i -= 1;
 		uri_encoded++;
 		new_len += 1;
 	}
-
-	return new_len - old_len;
+	
+	return new_len;
 }
 
 void handle_client(int server_fd, char *serve_dir){
@@ -82,8 +83,8 @@ void handle_client(int server_fd, char *serve_dir){
 		return;
 	};
 
-	char *arena = malloc(BUF_SIZE*3);
-	memset(arena, 0, BUF_SIZE*3);
+	char *arena = malloc(BUF_SIZE*3 + 24);
+	memset(arena, 0, BUF_SIZE*3 + 24);
 	size_t arena_top = 0;
 
 	char *req_buf = arena+arena_top;
@@ -111,53 +112,40 @@ void handle_client(int server_fd, char *serve_dir){
 		return;
 	}
 	req_line_sz-=1;
-
-	char *req_line = arena+arena_top;
-	arena_top += req_line_sz+1;
-	strncpy(req_line, req_buf, req_line_sz);
-	req_line[req_line_sz] = '\0';
+	char *req_line_sv = req_buf;
 
 	printf("Getting request method from request line...\n");
-	size_t req_method_sz = strcspn(req_line, " "); 
+	size_t req_method_sz = strcspn(req_line_sv, " "); 
 	if(!req_method_sz || req_method_sz==req_line_sz){
 		free(arena);
 		close(client_fd);
 		exit(1);
 		return;
 	}
-	char *req_method = arena+arena_top;
-	arena_top += req_method_sz+1;
-	strncpy(req_method, req_line, req_method_sz);
-	req_method[req_method_sz] = '\0';
+	char *req_method_sv = req_line_sv;
 
 	printf("Getting request URI from request line...\n");
-	size_t req_uri_sz = strcspn(req_line+req_method_sz+1, " ");
-	if(!req_uri_sz || req_uri_sz==strlen(req_line+req_method_sz+1)){
+	size_t req_uri_sz = strcspn(req_method_sv+req_method_sz+1, " ");
+	if(!req_uri_sz || req_uri_sz==req_line_sz - req_method_sz - 1){
 		free(arena);
 		close(client_fd);
 		exit(1);
 		return;
 	}
-	char *req_uri = arena+arena_top;
-	arena_top += req_uri_sz+1;
-	strncpy(req_uri, req_line+req_method_sz+1, req_uri_sz);
-	req_uri[req_uri_sz] = '\0';
+	char *req_uri_sv = req_method_sv+req_method_sz+1;
 
 	printf("Getting request HTTP version from request line...\n");
-	size_t req_httpver_sz = strcspn(req_line+req_method_sz+req_uri_sz+2, " ");
-	if(!req_httpver_sz || req_httpver_sz!=strlen(req_line+req_method_sz+req_uri_sz+2)){
+	size_t req_httpver_sz = strcspn(req_uri_sv+req_uri_sz+1, "\r");
+	if(!req_httpver_sz || req_httpver_sz!=req_line_sz - req_method_sz - req_uri_sz - 2){
 		free(arena);
 		close(client_fd);
 		exit(1);
 		return;
 	}
-	char *req_httpver = arena+arena_top;
-	arena_top += req_httpver_sz+1;
-	strncpy(req_httpver, req_line+req_method_sz+req_uri_sz+2, req_httpver_sz);
-	req_httpver[req_httpver_sz] = '\0';
+	char *req_httpver_sv = req_uri_sv+req_uri_sz+1;
 
 	printf("Checking if HTTP...\n");
-	if(strncmp(req_httpver, "HTTP", 4)!=0){
+	if(strncmp(req_httpver_sv, "HTTP", 4)!=0){
 		free(arena);
 		close(client_fd);
 		exit(1);
@@ -165,72 +153,69 @@ void handle_client(int server_fd, char *serve_dir){
 	}
 
 	printf("Handling GET request making sure the URI starts with `/`\n");
-	if(strncmp(req_uri, "/", 1)==0 && strncmp(req_method, "GET", 3)==0){
-		printf("A %s request to `%s`\n", req_method, req_uri);
+
+	if(strncmp(req_uri_sv, "/", 1)==0 && strncmp(req_method_sv, "GET", 3)==0){
+		printf("A GET request to `%.*s`\n", (int) req_uri_sz, req_uri_sv);
 
 		char *res = arena+arena_top; 
 		arena_top += BUF_SIZE*2;
 		size_t res_len = 0;
 
-		if(strcmp(req_uri, "/")==0){
+		if(strncmp(req_uri_sv, "/", req_uri_sz)==0){
 			char *temp_uri = "/index.html";
-			req_uri = arena+arena_top;
-			arena_top += strlen(temp_uri);
-			strcpy(req_uri, temp_uri);
-			req_uri_sz = strlen(req_uri);
-		} else if(strncmp(req_uri, "/?", 2)==0){
-			char temp_uri[strlen(req_uri+1)+1];
-			strcpy(temp_uri, req_uri+1);
-			sprintf(req_uri+1, "index.html%s", temp_uri);
-			req_uri_sz = strlen(req_uri);
+			req_uri_sv = arena+arena_top;
+			req_uri_sz = strlen(temp_uri);
+			arena_top += req_uri_sz;
+			strcpy(req_uri_sv, temp_uri);
+		} else if(strncmp(req_uri_sv, "/?", 2)==0){
+			char temp_uri[req_uri_sz-1+1];
+			strncpy(temp_uri, req_uri_sv+1, req_uri_sz-1);
+			temp_uri[req_uri_sz-1] = '\0';
+			req_uri_sv = arena+arena_top;
+			req_uri_sz = strlen("/index.html") + (req_uri_sz-1);
+			snprintf(req_uri_sv, req_uri_sz+1, "/index.html%s", temp_uri);
+			arena_top += req_uri_sz+1;
 		}
 
-		size_t req_path_sz = strcspn(req_uri, "?");
-		char *req_path = arena+arena_top;
-		arena_top += req_path_sz+1;
-		strncpy(req_path, req_uri, req_path_sz);
-		req_path[req_path_sz] = '\0';
+		size_t req_path_sz = strcspn(req_uri_sv, "? ");
+		char *req_path_sv = req_uri_sv;
 
 		size_t req_qparams_str_sz = req_uri_sz-req_path_sz;
 		if(req_qparams_str_sz){
 			req_qparams_str_sz-=1;
 		}
-		char *req_qparams_str = arena+arena_top;
-		arena_top += req_qparams_str_sz+1;
-		if(req_qparams_str_sz){
-			strncpy(req_qparams_str, req_uri+req_path_sz+1, req_qparams_str_sz);
-		}
-		req_qparams_str[req_qparams_str_sz] = '\0';
+		char *req_qparams_str_sv = req_path_sv + req_path_sz + 1;
 
-		decode_uri(req_path);
-		decode_uri(req_qparams_str);
+		req_path_sz = decode_uri(req_path_sv, req_path_sz);
+		req_qparams_str_sz = decode_uri(req_qparams_str_sv, req_qparams_str_sz);
 
-		printf("Path: `%s`\n", req_path);
-		if(req_qparams_str_sz) printf("Query Params: `%s`\n", req_qparams_str);
+		printf("Path: `%.*s`\n", (int) req_path_sz, req_path_sv);
+		if(req_qparams_str_sz) printf("Query Params: `%.*s`\n", (int) req_qparams_str_sz, req_qparams_str_sv);
 
-		if(strcmp(req_path, "/healthcheck") == 0){
+		if(strncmp(req_path_sv, "/healthcheck", strlen("/healthcheck")) == 0){
 			char res_h[500]; 
 
 			sprintf(
 				res_h, 
-				"%s 200 OK\r\n"
+				"%.*s 200 OK\r\n"
 				"server: Web-Cerver\r\n"
 				"connection: Close\r\n"
 				"content-length: 2\r\n"
 				"\r\n"
 				"OK"
 				,
-				req_httpver
+				(int) req_httpver_sz,
+				req_httpver_sv
 			);
 
 			strncpy(res, res_h, strlen(res_h));
 
 			res_len += strlen(res);
 		} else {
-			size_t file_path_len = (strlen(serve_dir)+strlen(req_path));
+			size_t file_path_len = (strlen(serve_dir)+req_path_sz);
 			char file_path[file_path_len+1];
 
-			sprintf(file_path, "%s%s", serve_dir, req_uri);
+			sprintf(file_path, "%s%.*s", serve_dir, (int) req_path_sz, req_path_sv);
 			file_path[file_path_len] = '\0';
 
 			FILE *fptr = fopen(file_path, "r");
@@ -246,13 +231,14 @@ void handle_client(int server_fd, char *serve_dir){
 				char res_h[500]; 
 				sprintf(
 					res_h, 
-					"%s 200 OK\r\n"
+					"%.*s 200 OK\r\n"
 					"server: Web-Cerver\r\n"
 					"connection: Close\r\n"
 					"content-length: %zu\r\n"
 					"\r\n"
 					,
-					req_httpver,
+					(int) req_httpver_sz,
+					req_httpver_sv,
 					fsize
 				);
 
@@ -274,13 +260,14 @@ void handle_client(int server_fd, char *serve_dir){
 				char res_h[500]; 
 				sprintf(
 					res_h, 
-					"%s 404 NOT FOUND\r\n"
+					"%.*s 404 NOT FOUND\r\n"
 					"server: Web-Cerver\r\n"
 					"connection: Close\r\n"
 					"content-length: %zu\r\n"
 					"\r\n"
 					,
-					req_httpver,
+					(int) req_httpver_sz,
+					req_httpver_sv,
 					strlen(body)
 				);
 
