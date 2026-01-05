@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #define MAX_CONN_QUEUE 128
 
@@ -83,8 +84,8 @@ void handle_client(int server_fd, char *serve_dir){
 		return;
 	};
 
-	char *arena = malloc(BUF_SIZE*3 + 24);
-	memset(arena, 0, BUF_SIZE*3 + 24);
+	char *arena = malloc(BUF_SIZE*3);
+	memset(arena, 0, BUF_SIZE*3);
 	size_t arena_top = 0;
 
 	char *req_buf = arena+arena_top;
@@ -161,22 +162,6 @@ void handle_client(int server_fd, char *serve_dir){
 		arena_top += BUF_SIZE*2;
 		size_t res_len = 0;
 
-		if(strncmp(req_uri_sv, "/", req_uri_sz)==0){
-			char *temp_uri = "/index.html";
-			req_uri_sv = arena+arena_top;
-			req_uri_sz = strlen(temp_uri);
-			arena_top += req_uri_sz;
-			strcpy(req_uri_sv, temp_uri);
-		} else if(strncmp(req_uri_sv, "/?", 2)==0){
-			char temp_uri[req_uri_sz-1+1];
-			strncpy(temp_uri, req_uri_sv+1, req_uri_sz-1);
-			temp_uri[req_uri_sz-1] = '\0';
-			req_uri_sv = arena+arena_top;
-			req_uri_sz = strlen("/index.html") + (req_uri_sz-1);
-			snprintf(req_uri_sv, req_uri_sz+1, "/index.html%s", temp_uri);
-			arena_top += req_uri_sz+1;
-		}
-
 		size_t req_path_sz = strcspn(req_uri_sv, "? ");
 		char *req_path_sv = req_uri_sv;
 
@@ -212,10 +197,14 @@ void handle_client(int server_fd, char *serve_dir){
 
 			res_len += strlen(res);
 		} else {
-			size_t file_path_len = (strlen(serve_dir)+req_path_sz);
+			bool is_index = strncmp(req_path_sv, "/", req_path_sz)==0;
+			size_t file_path_len = (
+				strlen(serve_dir)+
+				(is_index ? strlen("/index.html") : req_path_sz)
+			);
 			char file_path[file_path_len+1];
 
-			sprintf(file_path, "%s%.*s", serve_dir, (int) req_path_sz, req_path_sv);
+			sprintf(file_path, "%s%.*s", serve_dir, (int) (is_index ? strlen("/index.html") : req_path_sz), (is_index ? "/index.html" : req_path_sv));
 			file_path[file_path_len] = '\0';
 
 			FILE *fptr = fopen(file_path, "r");
