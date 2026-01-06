@@ -17,7 +17,7 @@
 #define DEFAULT_PORT 3000
 
 #define SERVE_DIR_BUF_SIZE 32768
-#define BUF_SIZE 104857600
+#define BUF_SIZE 1048
 
 int decode_uri(char *uri_encoded, size_t len){
 	int new_len = 0;
@@ -159,7 +159,7 @@ void handle_client(int server_fd, char *serve_dir){
 		printf("A GET request to `%.*s`\n", (int) req_uri_sz, req_uri_sv);
 
 		char *res = arena+arena_top; 
-		arena_top += BUF_SIZE*2;
+		arena_top += BUF_SIZE + 500;
 		size_t res_len = 0;
 
 		size_t req_path_sz = strcspn(req_uri_sv, "? ");
@@ -235,9 +235,14 @@ void handle_client(int server_fd, char *serve_dir){
 
 				res_len += strlen(res_h);
 
-				size_t capped_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
-				fread(res+res_len, capped_fsize, 1, fptr);
-				res_len+=capped_fsize;
+				printf("Sending response...\n");
+				size_t buffered_fsize = BUF_SIZE >= fsize ? fsize : BUF_SIZE;
+				while(!feof(fptr)){
+					size_t fnread = fread(res+res_len, buffered_fsize, 1, fptr);
+					res_len += buffered_fsize;
+					send(client_fd, res, res_len, fnread < buffered_fsize ? 0 : MSG_MORE);
+					res_len = 0;
+				}
 
 				fseek(fptr, 0, SEEK_SET);
 				fclose(fptr);
@@ -266,11 +271,12 @@ void handle_client(int server_fd, char *serve_dir){
 
 				strncpy(res+res_len, body, strlen(body));
 				res_len+=strlen(body);
+
+				printf("Sending response...\n");
+				send(client_fd, res, res_len, 0);
 			}
 		}
 
-		printf("Sending response...\n");
-		send(client_fd, res, res_len, 0);
 		printf("Sent.\n");
 	}
 
